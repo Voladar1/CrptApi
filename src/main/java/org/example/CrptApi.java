@@ -14,19 +14,35 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class CrptApi {
     private static final String postUrl = "https://ismp.crpt.ru/api/v3/lk/documents/create";
     private final Semaphore semaphore;
+    private final AtomicInteger requestCount = new AtomicInteger(0);
 
     public static void main(String[] args) {
         var crptApi = new CrptApi(TimeUnit.MINUTES,4);
         var objectTest = "{\"description\":{\"participantInn\":\"string\"},\"doc_id\":\"string\",\"doc_status\":\"string\",\"doc_type\":\"LP_INTRODUCE_GOODS\",\"importRequest\":true,\"owner_inn\":\"string\",\"participant_inn\":\"string\",\"producer_inn\":\"string\",\"production_date\":\"2020-01-23\",\"production_type\":\"string\",\"products\":[{\"certificate_document\":\"string\",\"certificate_document_date\":\"2020-01-23\",\"certificate_document_number\":\"string\",\"owner_inn\":\"string\",\"producer_inn\":\"string\",\"production_date\":\"2020-01-23\",\"tnved_code\":\"string\",\"uit_code\":\"string\",\"uitu_code\":\"string\"}],\"reg_date\":\"2020-01-23\",\"reg_number\":\"string\"}";
 
         Runnable task = () -> crptApi.sendObject(objectTest, "Signature");
+        Runnable task2 = () -> {
+            try {
+                Thread.sleep(61000);
+                System.out.println("Task2");
+                crptApi.sendObject(objectTest, "Signature");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt(); // Restore the interrupted status
+                System.err.println("Task was interrupted: " + e.getMessage());
+            }
+        };
+
+        for (int i = 0; i < 3; i++) {
+            new Thread(task).start();
+        }
 
         for (int i = 0; i < 10; i++) {
-            new Thread(task).start();
+            new Thread(task2).start();
         }
     }
 
@@ -34,8 +50,8 @@ public class CrptApi {
         semaphore = new Semaphore(requestLimit);
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
         scheduler.scheduleAtFixedRate(() -> {
-            semaphore.release(requestLimit);
-
+            semaphore.release(requestCount.get());
+            requestCount.set(0);
             System.out.println("request count refreshed.");
         }, 1, 1, timeUnit);
     }
@@ -45,6 +61,9 @@ public class CrptApi {
             System.out.println("Sending queued");
             semaphore.acquire();
             System.out.println("Sending started");
+
+            requestCount.incrementAndGet();
+
             // Populate your Document object here
             //Document document = new Document();
 
